@@ -1,25 +1,23 @@
 import { useState, useEffect } from "react";
 import socket from "../Socket";
 
-export default function Lobby({setRoomData}) {
+export default function Lobby({setRoomData, setMainUsername}) {
     
     const [username, setUsername] = useState("")
     const [roomCode, setRoomCode] = useState("")
     const [message, setMessage] = useState("")
 
     const handleCreate = () => {
+        setMainUsername(username)
         socket.emit("create_room", {username})
     }
 
     const handleJoin = () => {
-        socket.emit("join_room", {username, roomCode: roomCode.toUpperCase() })
+        setMainUsername(username)
+        socket.emit("join_room", {username, RoomCode: roomCode.toUpperCase() })
     }
 
     socket.on("room_created", (data) => {
-        setRoomData(data)
-    })
-
-    socket.on("joined_room", (data) => {
         setRoomData(data)
     })
     

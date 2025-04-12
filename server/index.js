@@ -14,7 +14,20 @@ app.use(cors({
   credentials: true
 }))
 
-const rooms = {}
+let rooms = {
+  SOMETHING: {
+    code: "SOMETHING",
+    players: [],
+    turn: "",
+    playersNo : 0,
+  },
+  NOTHING: {
+    code: "NOTHING",
+    players: [],
+    turn: "",
+    playersNo : 0,
+}
+}
 
 const io = new Server(server, {
   cors: {
@@ -27,52 +40,102 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id)
 
-  socket.on("create_room", ({username}) => {
-    const roomCode = Math.random().toString(36).substr(2, 6).toUpperCase()
+  socket.on("create_room", ({ username }) => {
+    const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase()
     socket.join(roomCode)
 
-    rooms[roomCode] = [{
-      id: socket.id,
-      username,
-      score: 0,
-    }]
+    rooms[roomCode] = {
+      code: roomCode,
+      playersNo: 1,
+      turn: username,
+      players: [{ id: socket.id, username, score: 0 }]
+    };
 
-    socket.emit('room_created', {roomCode, players: rooms[roomCode] })
-    io.to(roomCode).emit('update_players', rooms[roomCode])
+    socket.emit("room_created", rooms[roomCode])
   })
 
-  socket.on("join_room", ({roomCode, username}) => {
-    const room = rooms[roomCode]
+  socket.on("join_room", ({ RoomCode, username }) => {
+    const room = rooms[RoomCode.toUpperCase()]
     if (room) {
-      socket.join(roomCode)
-      room.push({ id: socket.id, username, score: 0 })
-      console.log("a user joined room", room);
-      
-      socket.emit("joined_room", {roomCode, players: room})
-      io.to(roomCode).emit("update_palyers", room)
+      socket.join(RoomCode)
+      room.playersNo++
+      room.players.push({ id: socket.id, username, score: 0 })
+  
+      console.log("A user joined room:", username)
+  
+      io.to(RoomCode).emit("update_players", room)
+      io.to(RoomCode).emit("recieve_message", "System", `${username} has joined the room.`)
+
+      socket.emit("turn_update", rooms[RoomCode].turn)
 
     } else {
       socket.emit("error_message", "Room does not exist")
     }
   })
+  
 
-  socket.on('disconnect', () => {
+  socket.on("send_message", (username, message, roomCode) => {
+    if (rooms[roomCode]) {
+      socket.nsp.to(roomCode).emit("recieve_message", username, message);
+    }
+  })
 
-    for ( const code in rooms ) {
-      const room = rooms[code]
-      const index = room.findIndex(p => p.id === socket.id)
+  socket.on("drawing", ({ roomCode, data, fullCanvas }) => {
+    socket.to(roomCode).emit("drawing", { fullCanvas })
+  })
+  
+  socket.on("update-canvas", ({ roomCode, fullCanvas }) => {
+    socket.to(roomCode).emit("update-canvas", { fullCanvas })
+  })
+   
+
+  socket.on("change_turn", ({ roomCode, nextTurn }) => {
+    if (rooms[roomCode]) {
+      rooms[roomCode].turn = nextTurn
+      io.to(roomCode).emit("update_players", rooms[roomCode])
+    }
+  })
+
+  socket.on("leave_room", ({ username, roomCode }) => {
+    if (rooms[roomCode]) {
+      rooms[roomCode].players = rooms[roomCode].players.filter(p => p.id !== socket.id)
+      console.log(`${username} left room: ${roomCode}`)
+  
+      io.to(roomCode).emit("recieve_message", "System", `${username} has left the room.`)
+      io.to(roomCode).emit("update_players", rooms[roomCode])
+  
+      socket.leave(roomCode)
+  
+      socket.emit("room_left")
+    }
+  });
+  
+
+  socket.on("disconnect", () => {
+    for (const code in rooms) {
+      const index = rooms[code].players.findIndex(p => p.id === socket.id)
+
       if (index !== -1) {
-        room.splice(index, 1)
-        io.to(code).emit("update_players", room)
+        const username = rooms[code].players[index].username
+        rooms[code].players.splice(index, 1)
+        rooms[code].playersNo--
+
+        io.to(code).emit("update_players", rooms[code])
+        io.to(code).emit("recieve_message", "System", `${username} has disconnected from the room.`)
+
+        if (rooms[code].players.length === 0) {
+          delete rooms[code]
+        }
+
         break
       }
     }
 
-    console.log('Client disconnected:', socket.id)
+    console.log("Client disconnected:", socket.id)
   })
 })
 
-const PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
 })
