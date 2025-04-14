@@ -68,26 +68,37 @@ io.on('connection', (socket) => {
 
       socket.emit("turn_update", rooms[RoomCode].turn)
 
+      const host = room.players.find(p => p.username === room.turn)
+      console.log("the host is ", host);
+      
+      if (host) {
+        io.to(host.id).emit("request_canvas_sync", socket.id)
+      }      
+      
     } else {
       socket.emit("error_message", "Room does not exist")
     }
   })
-  
 
   socket.on("send_message", (username, message, roomCode) => {
     if (rooms[roomCode]) {
       socket.nsp.to(roomCode).emit("recieve_message", username, message);
     }
-  })
+  })  
 
-  socket.on("drawing", ({ roomCode, data, fullCanvas }) => {
-    socket.to(roomCode).emit("drawing", { fullCanvas })
+  socket.on("drawing", ({ roomCode, pathData }) => {
+    socket.to(roomCode).emit("drawing", { pathData })
   })
   
-  socket.on("update-canvas", ({ roomCode, fullCanvas }) => {
+  socket.on("undo_redo", ({ roomCode, fullCanvas }) => {
     socket.to(roomCode).emit("update-canvas", { fullCanvas })
   })
-   
+  
+  socket.on("send_canvas_sync", ({ target, fullCanvas }) => {
+    console.log("inside send canvas server", target, fullCanvas);
+    
+    io.to(target).emit("receive_canvas_sync", { fullCanvas })
+  })
 
   socket.on("change_turn", ({ roomCode, nextTurn }) => {
     if (rooms[roomCode]) {
